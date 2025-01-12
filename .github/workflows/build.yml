@@ -42,32 +42,29 @@ on:
       - '.github/workflows/build.yml'
 
 jobs:
-  build-windows:
+  build-linux:
     strategy:
       fail-fast: false
       matrix:
         shared: [0, 1]
-    name: Build Windows (${{ matrix.shared == 0 && 'Static' || 'Shared' }})
-    runs-on: windows-2025
+    name: Build Linux (${{ matrix.shared == 0 && 'Static' || 'Shared' }})
+    runs-on: ubuntu-24.04
     steps:
-      - name: Install libiconv
-        uses: msys2/setup-msys2@v2
-        with:
-          update: true
-          install: |
-            gcc
-            git
-            libiconv
-            libiconv-devel
-            make
       - uses: actions/checkout@v4
       - name: Build
-        shell: msys2 {0}
         env:
           SHARED: ${{ matrix.shared }}
-        run: make
+        run: |
+          sudo apt install gcc-mingw-w64-x86-64 g++-mingw-w64-x86-64 make git
+          git clone https://github.com/hashcat/hashcat
+          git clone https://github.com/win-iconv/win-iconv
+          cd win-iconv/
+          patch < ../hashcat/tools/win-iconv-64.diff
+          sudo make install
+          cd ../
+          make win
       - name: Generate artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: hashcat-windows-${{ matrix.shared == 0 && 'static' || 'shared' }}
+          name: hashcat-linux-${{ matrix.shared == 0 && 'static' || 'shared' }}
           path: ${{ env.include_paths }}
