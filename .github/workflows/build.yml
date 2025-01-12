@@ -41,51 +41,13 @@ on:
       - '.github/workflows/build.yml'
 
 jobs:
-  build-linux:
-    strategy:
-      fail-fast: false
-      matrix:
-        shared: [0, 1]
-    name: Build Linux (${{ matrix.shared == 0 && 'Static' || 'Shared' }})
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v3
-      - name: Build
-        env:
-          SHARED: ${{ matrix.shared }}
-        run: make
-      - name: Generate artifacts
-        uses: actions/upload-artifact@v3
-        with:
-          name: hashcat-linux-${{ matrix.shared == 0 && 'static' || 'shared' }}
-          path: ${{ env.include_paths }}
-
-  build-macos:
-    strategy:
-      fail-fast: false
-      matrix:
-        shared: [0, 1]
-    name: Build macOS (${{ matrix.shared == 0 && 'Static' || 'Shared' }})
-    runs-on: macos-latest
-    steps:
-      - uses: actions/checkout@v3
-      - name: Build
-        env:
-          SHARED: ${{ matrix.shared }}
-        run: make
-      - name: Generate artifacts
-        uses: actions/upload-artifact@v3
-        with:
-          name: hashcat-macos-${{ matrix.shared == 0 && 'static' || 'shared' }}
-          path: ${{ env.include_paths }}
-
   build-windows:
     strategy:
       fail-fast: false
       matrix:
         shared: [0, 1]
     name: Build Windows (${{ matrix.shared == 0 && 'Static' || 'Shared' }})
-    runs-on: windows-latest
+    runs-on: windows-2025
     steps:
       - name: Install libiconv
         uses: msys2/setup-msys2@v2
@@ -97,14 +59,14 @@ jobs:
             libiconv
             libiconv-devel
             make
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       - name: Build
         shell: msys2 {0}
         env:
           SHARED: ${{ matrix.shared }}
         run: make
       - name: Generate artifacts
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: hashcat-windows-${{ matrix.shared == 0 && 'static' || 'shared' }}
           path: ${{ env.include_paths }}
