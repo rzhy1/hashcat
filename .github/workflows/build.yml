@@ -1,98 +1,79 @@
-name: Build
-
+name: Build hashcat
 env:
-  include_paths: |
-    charsets/
-    docs/
-    extra/
-    layouts/
-    masks/
-    modules/
-    OpenCL/
-    rules/
-    example*
-    hashcat*
-    libhashcat*
-
+      INCLUDE_PATHS: |
+        charsets/
+        docs/
+        extra/
+        layouts/
+        masks/
+        modules/
+        OpenCL/
+        rules/
+        example*
+        hashcat.exe
 on:
+  workflow_dispatch:
+  schedule:
+    - cron: '0 3 * * 0'
   push:
     branches:
-      - master
-    tags:
-      - v*
-    paths:
-      - 'OpenCL/**.h'
-      - 'OpenCL/**.cl'
-      - 'include/**.h'
-      - 'src/**.c'
-      - 'src/**.mk'
-      - 'tools/**'
-      - '**/Makefile'
-      - '.github/workflows/build.yml'
-  pull_request:
-    branches:
-      - master
-    paths:
-      - 'OpenCL/**.h'
-      - 'OpenCL/**.cl'
-      - 'include/**.h'
-      - 'src/**.c'
-      - 'src/**.mk'
-      - 'tools/**'
-      - '**/Makefile'
-      - '.github/workflows/build.yml'
+      - "*"
 
 jobs:
-  build:
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
-        shared: [0, 1]
-        include:
-          - os: ubuntu-latest
-            os_name: Linux
-            os_name_lowercase: linux
-          - os: macos-latest
-            os_name: macOS
-            os_name_lowercase: macos
-          - os: windows-latest
-            os_name: Windows
-            os_name_lowercase: windows
-
-    name: Build ${{ matrix.os_name }} (${{ matrix.shared == 0 && 'Static' || 'Shared' }})
-    runs-on: ${{ matrix.os }}
+  build-and-release:
+    runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
-      - name: Install dependencies (Windows only)
-        if: matrix.os_name_lowercase == 'windows'
-        uses: msys2/setup-msys2@v2
+      - name: Install Build Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends build-essential gcc-mingw-w64-x86-64 g++-mingw-w64-x86-64 make git zstd python3-dev cmake p7zip-full
+
+      - name: Clone Source Code
+        run: |
+          git clone https://github.com/hashcat/hashcat
+          git clone https://github.com/win-iconv/win-iconv
+
+      - name: Compile and Install win-iconv
+        run: |
+          cd win-iconv/
+          cmake -D WIN_ICONV_BUILD_EXECUTABLE=OFF -D CMAKE_INSTALL_PREFIX=/opt/win-iconv-64 -D CMAKE_CXX_COMPILER=$(which x86_64-w64-mingw32-g++) -D CMAKE_C_COMPILER=$(which x86_64-w64-mingw32-gcc) -D CMAKE_SYSTEM_NAME=Windows
+          sudo make install
+          cd ../
+
+      - name: Install Windows Python
+        run: |
+          wget https://repo.msys2.org/mingw/mingw64/mingw-w64-x86_64-python-3.12.10-1-any.pkg.tar.zst
+          sudo mkdir /opt/win-python
+          sudo tar --zstd -xf mingw-w64-x86_64-python-3.12.10-1-any.pkg.tar.zst -C /opt/win-python
+
+      - name: Build hashcat
+        run: |
+          cd hashcat/
+          make -j$(nproc) win
+
+      - name: Get Hashcat Version String
+        id: get_version
+        run: |
+          cd hashcat/
+          VERSION_STRING=$(git describe --tags --always)
+          echo "version=${VERSION_STRING}" >> $GITHUB_OUTPUT
+
+      - name: Package Release Artifact
+        id: package_release
+        run: |
+          cd hashcat/
+          ARCHIVE_NAME="hashcat_${{ steps.get_version.outputs.version }}.7z"
+          7z a ../$ARCHIVE_NAME $(echo "${{ env.INCLUDE_PATHS }}" | tr '\n' ' ')
+          echo "archive_path=./$ARCHIVE_NAME" >> $GITHUB_OUTPUT
+
+      - name: Create Release
+        uses: ncipollo/release-action@v1
         with:
-          update: true
-          install: |
-            gcc
-            git
-            libiconv
-            libiconv-devel
-            make
-            python
-
-      - name: Build (Windows)
-        if: matrix.os_name_lowercase == 'windows'
-        shell: msys2 {0}
-        env:
-          SHARED: ${{ matrix.shared }}
-        run: make
-
-      - name: Build (Linux/macOS)
-        if: matrix.os_name_lowercase != 'windows'
-        env:
-          SHARED: ${{ matrix.shared }}
-        run: make
-
-      - name: Generate artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: hashcat-${{ matrix.os_name_lowercase }}-${{ matrix.shared == 0 && 'static' || 'shared' }}
-          path: ${{ env.include_paths }}
+          artifacts: ${{ steps.package_release.outputs.archive_path }}
+          name: hashcat ${{ steps.get_version.outputs.version }}
+          tag: ${{ steps.get_version.outputs.version }}
+          allowUpdates: true
+          token: ${{ secrets.GITHUB_TOKEN }}
