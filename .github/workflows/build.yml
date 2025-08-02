@@ -22,7 +22,9 @@ on:
     - cron: '0 3 * * 0'
   push:
     branches:
-      - "*"
+      - "*"  
+    paths:
+      - '.github/workflows/build.yml'
 
 jobs:
   build-and-release:
