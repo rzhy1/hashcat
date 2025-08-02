@@ -36,7 +36,7 @@ jobs:
         run: |
           cd hashcat
           chmod +x ./hashcat.bin
-          ./hashcat -I
+          ./hashcat.bin -I
           ./hashcat.bin -m 9600 -a 3 -w 3 -O -d 0  --status --status-timer=10 \
             -i --increment-min=6 --increment-max=7 \
             '$office$*2013*100000*256*16*363d7ce76b0ab028c5796dd66ac64d1b*d69b0a883d65f52cbda3ea73f44a4251*767de97bfa6e5fc1b75748b2b566d3f595d31e21d4af62a62482284ca7e49e28' \
