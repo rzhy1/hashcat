@@ -20,7 +20,7 @@ jobs:
           
       - name: Download hashcat
         run: |
-          wget https://github.com/rzhy1/hashcat/releases/download/v7.0.0/hashcat_v7.0.0.7z -O hashcat.7z
+          wget https://github.com/hashcat/hashcat/releases/download/v7.0.0/hashcat-7.0.0.7z -O hashcat.7z
           
       - name: Extract hashcat
         run: |
