@@ -25,7 +25,10 @@ jobs:
       - name: Extract hashcat
         run: |
           7z x hashcat.7z -ohashcat -y
-          ls -la hashcat/  # 列出文件确认结构
+          echo "Searching for hashcat..."
+          find . -type f -executable -name "hashcat*" 2>/dev/null | grep -E "hashcat$|hashcat.bin$"
+          echo "Current directory contents:"
+          ls -laR | grep -i hashcat
           
       - name: Run hashcat command
         run: |
