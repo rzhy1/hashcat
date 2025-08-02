@@ -1,0 +1,30 @@
+name: Run Hashcat Password Recovery
+
+on:
+  workflow_dispatch:  # 仅手动触发
+
+jobs:
+  hashcat-crack:
+    runs-on: windows-latest  # 使用Windows运行环境
+    
+    steps:
+      - name: Checkout repository (optional)
+        uses: actions/checkout@v4
+        # 这步是可选的，如果你需要从仓库获取其他文件可以保留
+        
+      - name: Download hashcat
+        run: |
+          $url = "https://github.com/rzhy1/hashcat/releases/download/v7.0.0/hashcat_v7.0.0.7z"
+          $output = "hashcat.7z"
+          Invoke-WebRequest -Uri $url -OutFile $output
+          
+      - name: Extract hashcat
+        run: |
+          7z x hashcat.7z -o"hashcat" -y
+          
+      - name: Run hashcat command
+        run: |
+          cd hashcat
+          .\hashcat.exe -m 9600 -a 3 -w 3 -O --status --status-timer=5 `
+            "$office$*2013*100000*256*16*363d7ce76b0ab028c5796dd66ac64d1b*d69b0a883d65f52cbda3ea73f44a4251*767de97bfa6e5fc1b75748b2b566d3f595d31e21d4af62a62482284ca7e49e28" `
+            -i --increment-min=6 --increment-max=8 "?d?d?d?d?d?d?d?d"
