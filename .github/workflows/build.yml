@@ -59,8 +59,8 @@ jobs:
       - name: Build hashcat
         run: |
           cd hashcat/
-          make -j$(nproc) win
-
+          make -j$(nproc) win V=1
+          
       - name: Get Hashcat Version String
         id: get_version
         run: |
