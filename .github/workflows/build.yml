@@ -1,42 +1,73 @@
 name: Build hashcat
+
 env:
-      INCLUDE_PATHS: |
-        charsets/
-        docs/
-        extra/
-        layouts/
-        masks/
-        modules/
-        OpenCL/
-        rules/
-        bridges/
-        Python/
-        tools/*.py
-        tools/*.pl
-        tunings/
-        example*
-        hashcat*
+  INCLUDE_PATHS: |
+    charsets/
+    docs/
+    extra/
+    layouts/
+    masks/
+    modules/
+    OpenCL/
+    rules/
+    bridges/
+    Python/
+    tools/*.py
+    tools/*.pl
+    tunings/
+    example*
+    hashcat*
+
 on:
   workflow_dispatch:
   schedule:
     - cron: '0 3 * * 0'
   push:
     branches:
-      - "*"  
+      - "*"
     paths:
       - '.github/workflows/build.yml'
 
 jobs:
   build-and-release:
     runs-on: ubuntu-latest
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      # 固定 Rust 版本并添加 Windows target
+      - name: Set up Rust
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          override: true
+          profile: minimal
+      - name: Add Windows Rust target
+        run: rustup target add x86_64-pc-windows-gnu
+
+      # Cargo 缓存
+      - name: Cache cargo registry + index
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: ${{ runner.os }}-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
+      - name: Cache cargo build
+        uses: actions/cache@v4
+        with:
+          path: target
+          key: ${{ runner.os }}-cargo-build-${{ hashFiles('**/Cargo.lock') }}
+
       - name: Install Build Dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends build-essential gcc-mingw-w64-x86-64 g++-mingw-w64-x86-64 make git zstd python3-dev cmake p7zip-full
+          sudo apt-get install -y --no-install-recommends \
+            build-essential \
+            gcc-mingw-w64-x86-64 \
+            g++-mingw-w64-x86-64 \
+            make git zstd python3-dev cmake p7zip-full
 
       - name: Clone Source Code
         run: |
@@ -46,7 +77,12 @@ jobs:
       - name: Compile and Install win-iconv
         run: |
           cd win-iconv/
-          cmake -D WIN_ICONV_BUILD_EXECUTABLE=OFF -D CMAKE_INSTALL_PREFIX=/opt/win-iconv-64 -D CMAKE_CXX_COMPILER=$(which x86_64-w64-mingw32-g++) -D CMAKE_C_COMPILER=$(which x86_64-w64-mingw32-gcc) -D CMAKE_SYSTEM_NAME=Windows
+          cmake \
+            -D WIN_ICONV_BUILD_EXECUTABLE=OFF \
+            -D CMAKE_INSTALL_PREFIX=/opt/win-iconv-64 \
+            -D CMAKE_CXX_COMPILER=$(which x86_64-w64-mingw32-g++) \
+            -D CMAKE_C_COMPILER=$(which x86_64-w64-mingw32-gcc) \
+            -D CMAKE_SYSTEM_NAME=Windows
           sudo make install
           cd ../
 
@@ -59,9 +95,8 @@ jobs:
       - name: Build hashcat
         run: |
           cd hashcat/
-          rustup target add x86_64-pc-windows-gnu
           make -j$(nproc) win
-          
+
       - name: Get Hashcat Version String
         id: get_version
         run: |
