@@ -59,7 +59,8 @@ jobs:
       - name: Build hashcat
         run: |
           cd hashcat/
-          make -j$(nproc) win V=1
+          rustup target add x86_64-pc-windows-gnu
+          make -j$(nproc) win
           
       - name: Get Hashcat Version String
         id: get_version
