@@ -76,8 +76,8 @@ jobs:
 
       - name: Clone Source Code
         run: |
-          git clone https://github.com/hashcat/hashcat
-          git clone https://github.com/win-iconv/win-iconv
+          git clone https://github.com/hashcat/hashcat --force
+          git clone https://github.com/win-iconv/win-iconv --force
 
       - name: Compile and Install win-iconv
         run: |
