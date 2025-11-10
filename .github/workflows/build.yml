@@ -20,6 +20,11 @@ env:
 
 on:
   workflow_dispatch:
+    inputs:
+      force:
+        description: "强制编译 (1=强制, 0=仅检测更新)"
+        required: false
+        default: "0"
   schedule:
     - cron: "0 0 * * *"
   push:
@@ -31,23 +36,78 @@ on:
 jobs:
   build-and-release:
     runs-on: ubuntu-latest
+    env:
+      # workflow_dispatch 时可通过界面输入 force=1 强制编译
+      FORCE_BUILD: ${{ github.event.inputs.force || '0' }}
 
     steps:
+      # 尝试恢复最近一次保存的 .cache（我们用 prefix upstream-sha- 来查找）
+      - name: Restore last upstream SHA cache
+        uses: actions/cache@v4
+        with:
+          path: .cache
+          key: upstream-sha-${{ runner.os }}-${{ github.run_id }}
+          restore-keys: |
+            upstream-sha-${{ runner.os }}-
+
+      # 检查上游是否有更新，写出 outputs: new_sha / old_sha / skip
+      - id: check_upstream
+        name: Check upstream changes
+        shell: bash
+        run: |
+          mkdir -p .cache
+
+          # 获取上游最新 commit
+          git clone --depth=1 https://github.com/hashcat/hashcat.git tmprepo
+          NEW_SHA=$(cd tmprepo && git rev-parse HEAD)
+          echo "new_sha=$NEW_SHA" >> $GITHUB_OUTPUT
+          echo "Found upstream NEW_SHA=$NEW_SHA"
+
+          if [ -f .cache/last_sha ]; then
+            OLD_SHA=$(cat .cache/last_sha)
+          else
+            OLD_SHA=""
+          fi
+          echo "old_sha=$OLD_SHA" >> $GITHUB_OUTPUT
+          echo "Found cached OLD_SHA=$OLD_SHA"
+
+          if [ "${FORCE_BUILD}" = "1" ]; then
+            echo "FORCE_BUILD=1 -> 强制编译"
+            echo "skip=false" >> $GITHUB_OUTPUT
+          else
+            if [ "$NEW_SHA" = "$OLD_SHA" ]; then
+              echo "No upstream changes, skipping build."
+              echo "skip=true" >> $GITHUB_OUTPUT
+              # 注意：这里 exit 0 只是结束本 step，后续步骤由 if 控制是否执行
+              exit 0
+            else
+              # 保存新 sha 到 .cache/last_sha，稍后会把 .cache 缓存为 upstream-sha-<sha>
+              echo "$NEW_SHA" > .cache/last_sha
+              echo "skip=false" >> $GITHUB_OUTPUT
+            fi
+          fi
+
+      # 下面的所有构建相关步骤都加上条件：只有 check_upstream.outputs.skip != 'true' 才会运行
       - name: Checkout repository
+        if: ${{ steps.check_upstream.outputs.skip != 'true' }}
         uses: actions/checkout@v4
 
       # 固定 Rust 版本并添加 Windows target
       - name: Set up Rust
+        if: ${{ steps.check_upstream.outputs.skip != 'true' }}
         uses: actions-rs/toolchain@v1
         with:
           toolchain: stable
           override: true
           profile: minimal
+
       - name: Add Windows Rust target
+        if: ${{ steps.check_upstream.outputs.skip != 'true' }}
         run: rustup target add x86_64-pc-windows-gnu
 
       # Cargo 缓存 (registry + build)
       - name: Cache cargo registry + index
+        if: ${{ steps.check_upstream.outputs.skip != 'true' }}
         uses: actions/cache@v4
         with:
           path: |
@@ -58,6 +118,7 @@ jobs:
             ${{ runner.os }}-cargo-registry-
 
       - name: Cache cargo build
+        if: ${{ steps.check_upstream.outputs.skip != 'true' }}
         uses: actions/cache@v4
         with:
           path: hashcat/Rust/generic_hash/target
@@ -66,6 +127,7 @@ jobs:
             ${{ runner.os }}-cargo-build-
 
       - name: Install Build Dependencies
+        if: ${{ steps.check_upstream.outputs.skip != 'true' }}
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
@@ -75,6 +137,7 @@ jobs:
             make git zstd python3-dev cmake p7zip-full
 
       - name: Clone Source Code
+        if: ${{ steps.check_upstream.outputs.skip != 'true' }}
         run: |
           sudo rm -rf hashcat
           sudo rm -rf win-iconv
@@ -82,6 +145,7 @@ jobs:
           git clone https://github.com/win-iconv/win-iconv
 
       - name: Compile and Install win-iconv
+        if: ${{ steps.check_upstream.outputs.skip != 'true' }}
         run: |
           cd win-iconv/
           cmake \
@@ -94,17 +158,20 @@ jobs:
           cd ../
 
       - name: Install Windows Python
+        if: ${{ steps.check_upstream.outputs.skip != 'true' }}
         run: |
           wget https://repo.msys2.org/mingw/mingw64/mingw-w64-x86_64-python-3.12.10-1-any.pkg.tar.zst
           sudo mkdir /opt/win-python
           sudo tar --zstd -xf mingw-w64-x86_64-python-3.12.10-1-any.pkg.tar.zst -C /opt/win-python
 
       - name: Build hashcat
+        if: ${{ steps.check_upstream.outputs.skip != 'true' }}
         run: |
           cd hashcat/
           make -j$(nproc) win V=1
 
       - name: Get Hashcat Version String
+        if: ${{ steps.check_upstream.outputs.skip != 'true' }}
         id: get_version
         run: |
           cd hashcat/
@@ -112,6 +179,7 @@ jobs:
           echo "version=${VERSION_STRING}" >> $GITHUB_OUTPUT
 
       - name: Package Release Artifact
+        if: ${{ steps.check_upstream.outputs.skip != 'true' }}
         id: package_release
         run: |
           cd hashcat/
@@ -120,6 +188,7 @@ jobs:
           echo "archive_path=./$ARCHIVE_NAME" >> $GITHUB_OUTPUT
 
       - name: Create Release
+        if: ${{ steps.check_upstream.outputs.skip != 'true' }}
         uses: ncipollo/release-action@v1
         with:
           artifacts: ${{ steps.package_release.outputs.archive_path }}
@@ -127,3 +196,11 @@ jobs:
           tag: ${{ steps.get_version.outputs.version }}
           allowUpdates: true
           token: ${{ secrets.GITHUB_TOKEN }}
+
+      # 构建成功后，把 .cache（包含 last_sha）存为新的缓存，key 带上 new_sha
+      - name: Save last upstream SHA to cache
+        if: ${{ steps.check_upstream.outputs.skip == 'false' && success() }}
+        uses: actions/cache@v4
+        with:
+          path: .cache
+          key: upstream-sha-${{ runner.os }}-${{ steps.check_upstream.outputs.new_sha }}
