@@ -90,7 +90,7 @@ jobs:
       # 下面的所有构建相关步骤都加上条件：只有 check_upstream.outputs.skip != 'true' 才会运行
       - name: Checkout repository
         if: ${{ steps.check_upstream.outputs.skip != 'true' }}
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
 
       # 固定 Rust 版本并添加 Windows target
       - name: Set up Rust
