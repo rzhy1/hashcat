@@ -43,7 +43,7 @@ jobs:
     steps:
       # 尝试恢复最近一次保存的 .cache（我们用 prefix upstream-sha- 来查找）
       - name: Restore last upstream SHA cache
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: .cache
           key: upstream-sha-${{ runner.os }}-${{ github.run_id }}
@@ -108,7 +108,7 @@ jobs:
       # Cargo 缓存 (registry + build)
       - name: Cache cargo registry + index
         if: ${{ steps.check_upstream.outputs.skip != 'true' }}
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: |
             ~/.cargo/registry
@@ -119,7 +119,7 @@ jobs:
 
       - name: Cache cargo build
         if: ${{ steps.check_upstream.outputs.skip != 'true' }}
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: hashcat/Rust/generic_hash/target
           key: ${{ runner.os }}-cargo-build-${{ hashFiles('hashcat/Rust/generic_hash/Cargo.lock') }}
@@ -200,7 +200,7 @@ jobs:
       # 构建成功后，把 .cache（包含 last_sha）存为新的缓存，key 带上 new_sha
       - name: Save last upstream SHA to cache
         if: ${{ steps.check_upstream.outputs.skip == 'false' && success() }}
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: .cache
           key: upstream-sha-${{ runner.os }}-${{ steps.check_upstream.outputs.new_sha }}
