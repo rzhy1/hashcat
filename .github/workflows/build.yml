@@ -40,14 +40,14 @@ jobs:
       FORCE_BUILD: ${{ github.event.inputs.force || '0' }}
 
     steps:
-      # 关键修改：使用固定的缓存key，而不是动态的
+      # 尝试恢复最近一次保存的 .cache
       - name: Restore last upstream SHA cache
         uses: actions/cache@v5
         with:
           path: .cache
-          key: upstream-sha-cache  # 改为固定key
+          key: upstream-sha-${{ runner.os }}-${{ github.run_id }}
           restore-keys: |
-            upstream-sha-cache
+            upstream-sha-${{ runner.os }}-
 
       # 检查上游是否有更新
       - id: check_upstream
@@ -62,45 +62,36 @@ jobs:
           echo "new_sha=$NEW_SHA" >> $GITHUB_OUTPUT
           echo "Found upstream NEW_SHA=$NEW_SHA"
 
-          # 读取缓存的SHA
           if [ -f .cache/last_sha ]; then
             OLD_SHA=$(cat .cache/last_sha)
-            echo "Found cached OLD_SHA=$OLD_SHA"
           else
             OLD_SHA=""
-            echo "No cached SHA found"
           fi
           echo "old_sha=$OLD_SHA" >> $GITHUB_OUTPUT
+          echo "Found cached OLD_SHA=$OLD_SHA"
 
-          # 判断是否需要构建
           if [ "${FORCE_BUILD}" = "1" ]; then
             echo "FORCE_BUILD=1 -> 强制编译"
             echo "skip=false" >> $GITHUB_OUTPUT
           else
             if [ "$NEW_SHA" = "$OLD_SHA" ]; then
-              echo "No upstream changes (current: $NEW_SHA), skipping build."
+              echo "No upstream changes, skipping build."
               echo "skip=true" >> $GITHUB_OUTPUT
+              exit 0
             else
-              echo "Detected upstream changes: $OLD_SHA -> $NEW_SHA"
               echo "skip=false" >> $GITHUB_OUTPUT
             fi
           fi
           
           # 清理临时仓库
           rm -rf tmprepo
-
-      # 保存SHA到缓存（无论是否构建，都要保存当前SHA）
-      - name: Save current SHA to cache
-        if: always()  # 总是执行，确保SHA被保存
-        run: |
-          mkdir -p .cache
-          echo "${{ steps.check_upstream.outputs.new_sha }}" > .cache/last_sha
-          echo "Saved SHA ${{ steps.check_upstream.outputs.new_sha }} to .cache/last_sha"
+        env:
+          FORCE_BUILD: ${{ env.FORCE_BUILD }}
 
       # 下面的所有构建相关步骤都加上条件
       - name: Checkout repository
         if: ${{ steps.check_upstream.outputs.skip != 'true' }}
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Set up Rust
         if: ${{ steps.check_upstream.outputs.skip != 'true' }}
@@ -114,7 +105,6 @@ jobs:
         if: ${{ steps.check_upstream.outputs.skip != 'true' }}
         run: rustup target add x86_64-pc-windows-gnu
 
-      # Cargo 缓存
       - name: Cache cargo registry + index
         if: ${{ steps.check_upstream.outputs.skip != 'true' }}
         uses: actions/cache@v5
@@ -148,7 +138,7 @@ jobs:
       - name: Clone Source Code
         if: ${{ steps.check_upstream.outputs.skip != 'true' }}
         run: |
-          rm -rf hashcat win-iconv
+          sudo rm -rf hashcat win-iconv
           git clone https://github.com/hashcat/hashcat.git
           git clone https://github.com/win-iconv/win-iconv.git
 
@@ -204,3 +194,19 @@ jobs:
           tag: ${{ steps.get_version.outputs.version }}
           allowUpdates: true
           token: ${{ secrets.GITHUB_TOKEN }}
+
+      # 构建成功后保存新的 SHA 到缓存文件
+      - name: Save SHA to cache file
+        if: ${{ steps.check_upstream.outputs.skip == 'false' }}
+        run: |
+          mkdir -p .cache
+          echo "${{ steps.check_upstream.outputs.new_sha }}" > .cache/last_sha
+          echo "Saved SHA ${{ steps.check_upstream.outputs.new_sha }} to .cache/last_sha"
+
+      # 保存缓存（使用新 SHA 作为 key）
+      - name: Save last upstream SHA to cache
+        if: ${{ steps.check_upstream.outputs.skip == 'false' }}
+        uses: actions/cache@v5
+        with:
+          path: .cache
+          key: upstream-sha-${{ runner.os }}-${{ steps.check_upstream.outputs.new_sha }}
