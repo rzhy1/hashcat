@@ -91,7 +91,7 @@ jobs:
       # 下面的所有构建相关步骤都加上条件
       - name: Checkout repository
         if: ${{ steps.check_upstream.outputs.skip != 'true' }}
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Set up Rust
         if: ${{ steps.check_upstream.outputs.skip != 'true' }}
