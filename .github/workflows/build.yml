@@ -1,23 +1,5 @@
 name: Build hashcat
 
-env:
-  INCLUDE_PATHS: |
-    charsets/
-    docs/
-    extra/
-    layouts/
-    masks/
-    modules/
-    OpenCL/
-    rules/
-    bridges/
-    Python/
-    tools/*.py
-    tools/*.pl
-    tunings/
-    example*
-    hashcat*
-
 on:
   workflow_dispatch:
     inputs:
@@ -163,9 +145,23 @@ jobs:
 
       - name: Build hashcat
         if: ${{ steps.check_upstream.outputs.skip != 'true' }}
+        shell: bash
         run: |
           cd hashcat/
-          make -j$(nproc) win V=1
+          make clean
+
+          export CC=x86_64-w64-mingw32-gcc
+          export CXX=x86_64-w64-mingw32-g++
+          export CARGO_BUILD_TARGET=x86_64-pc-windows-gnu
+          export CFLAGS="-I/opt/win-iconv-64/include -static"
+          export LDFLAGS="-L/opt/win-iconv-64/lib -static"
+
+          make -j$(nproc) win \
+            CC=x86_64-w64-mingw32-gcc \
+            CXX=x86_64-w64-mingw32-g++ \
+            STATIC=1 \
+            ICONV_HOME=/opt/win-iconv-64 \
+            V=1
 
       - name: Get Hashcat Version String
         if: ${{ steps.check_upstream.outputs.skip != 'true' }}
@@ -181,7 +177,23 @@ jobs:
         run: |
           cd hashcat/
           ARCHIVE_NAME="hashcat_${{ steps.get_version.outputs.version }}.7z"
-          7z a ../$ARCHIVE_NAME $(echo "${{ env.INCLUDE_PATHS }}" | tr '\n' ' ')
+          7z a ../$ARCHIVE_NAME \
+            hashcat.exe \
+            hashcat.dll \
+            hashcat.hcstat2 \
+            OpenCL/ \
+            modules/*.dll \
+            rules/ \
+            masks/ \
+            charsets/ \
+            layouts/ \
+            tunings/ \
+            docs/ \
+            bridges/ \
+            Python/ \
+            tools/ \
+            extra/ \
+            example*
           echo "archive_path=./$ARCHIVE_NAME" >> $GITHUB_OUTPUT
 
       - name: Create Release
