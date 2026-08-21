@@ -184,6 +184,7 @@ jobs:
             OpenCL/ \
             modules/*.dll \
             rules/ \
+            feeds/*.dll \
             masks/ \
             charsets/ \
             layouts/ \
@@ -191,7 +192,8 @@ jobs:
             docs/ \
             bridges/ \
             Python/ \
-            tools/ \
+            tools/*.py \
+            tools/*.pl \
             extra/ \
             example*
           echo "archive_path=./$ARCHIVE_NAME" >> $GITHUB_OUTPUT
