@@ -187,10 +187,8 @@ jobs:
             feeds/*.dll \
             masks/ \
             charsets/ \
-            layouts/ \
             tunings/ \
             docs/ \
-            bridges/ \
             Python/ \
             tools/*.py \
             tools/*.pl \
