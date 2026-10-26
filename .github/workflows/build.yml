@@ -163,6 +163,18 @@ jobs:
             ICONV_HOME=/opt/win-iconv-64 \
             V=1
 
+      - name: Locate liblzma.dll
+        if: ${{ steps.check_upstream.outputs.skip != 'true' }}
+        run: |
+          echo "Searching for liblzma*.dll across the filesystem ..."
+          sudo find / -type f \( -iname 'liblzma*.dll' -o -iname 'liblzma.dll' \) 2>/dev/null | tee /tmp/liblzma_found.txt
+
+          if [ -s /tmp/liblzma_found.txt ]; then
+            echo "Found $(wc -l < /tmp/liblzma_found.txt) candidate(s):"
+            cat /tmp/liblzma_found.txt
+          else
+            echo "No liblzma.dll found on this runner."
+          fi
       - name: Get Hashcat Version String
         if: ${{ steps.check_upstream.outputs.skip != 'true' }}
         id: get_version
