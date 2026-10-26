@@ -22,9 +22,10 @@ jobs:
       FORCE_BUILD: ${{ github.event.inputs.force || '0' }}
 
     steps:
-      # 尝试恢复最近一次保存的 .cache
+      # 只恢复，不自动保存。run_id 作为 primary key 永远不命中，
+      # 实际总是通过 restore-keys 前缀拿到最近一次 save 的 .cache
       - name: Restore last upstream SHA cache
-        uses: actions/cache@v5
+        uses: actions/cache/restore@v5
         with:
           path: .cache
           key: upstream-sha-${{ runner.os }}-${{ github.run_id }}
@@ -59,12 +60,13 @@ jobs:
             if [ "$NEW_SHA" = "$OLD_SHA" ]; then
               echo "No upstream changes, skipping build."
               echo "skip=true" >> $GITHUB_OUTPUT
+              rm -rf tmprepo
               exit 0
             else
               echo "skip=false" >> $GITHUB_OUTPUT
             fi
           fi
-          
+
           # 清理临时仓库
           rm -rf tmprepo
         env:
@@ -74,37 +76,6 @@ jobs:
       - name: Checkout repository
         if: ${{ steps.check_upstream.outputs.skip != 'true' }}
         uses: actions/checkout@v7
-
-      - name: Set up Rust
-        if: ${{ steps.check_upstream.outputs.skip != 'true' }}
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          override: true
-          profile: minimal
-
-      - name: Add Windows Rust target
-        if: ${{ steps.check_upstream.outputs.skip != 'true' }}
-        run: rustup target add x86_64-pc-windows-gnu
-
-      - name: Cache cargo registry + index
-        if: ${{ steps.check_upstream.outputs.skip != 'true' }}
-        uses: actions/cache@v5
-        with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-          key: ${{ runner.os }}-cargo-registry-${{ hashFiles('hashcat/Rust/generic_hash/Cargo.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-cargo-registry-
-
-      - name: Cache cargo build
-        if: ${{ steps.check_upstream.outputs.skip != 'true' }}
-        uses: actions/cache@v5
-        with:
-          path: hashcat/Rust/generic_hash/target
-          key: ${{ runner.os }}-cargo-build-${{ hashFiles('hashcat/Rust/generic_hash/Cargo.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-cargo-build-
 
       - name: Install Build Dependencies
         if: ${{ steps.check_upstream.outputs.skip != 'true' }}
@@ -122,6 +93,39 @@ jobs:
           sudo rm -rf hashcat win-iconv
           git clone https://github.com/hashcat/hashcat.git
           git clone https://github.com/win-iconv/win-iconv.git
+
+      # 缓存必须在 clone 之后，否则 hashFiles 找不到 Cargo.lock，key 会是空后缀
+      - name: Cache cargo registry + index
+        if: ${{ steps.check_upstream.outputs.skip != 'true' }}
+        uses: actions/cache@v5
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: ${{ runner.os }}-cargo-registry-${{ hashFiles('hashcat/Rust/**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-registry-
+
+      # 路径必须是 Makefile 实际使用的 --target-dir 目录
+      - name: Cache cargo build
+        if: ${{ steps.check_upstream.outputs.skip != 'true' }}
+        uses: actions/cache@v5
+        with:
+          path: |
+            hashcat/Rust/bridges/dynamic_hash/target
+            hashcat/Rust/bridges/generic_hash/target
+            hashcat/Rust/feeds/random/target
+          key: ${{ runner.os }}-cargo-build-${{ hashFiles('hashcat/Rust/**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-build-
+
+      # 用合法的 targets 输入一次装好 Windows target，
+      # 不再传无效的 override/profile，也删掉单独的 rustup target add 步骤
+      - name: Set up Rust
+        if: ${{ steps.check_upstream.outputs.skip != 'true' }}
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-gnu
 
       - name: Compile and Install win-iconv
         if: ${{ steps.check_upstream.outputs.skip != 'true' }}
@@ -160,21 +164,10 @@ jobs:
             CC=x86_64-w64-mingw32-gcc \
             CXX=x86_64-w64-mingw32-g++ \
             STATIC=1 \
+            ENABLE_LTO=1 \
             ICONV_HOME=/opt/win-iconv-64 \
             V=1
 
-      - name: Locate liblzma.dll
-        if: ${{ steps.check_upstream.outputs.skip != 'true' }}
-        run: |
-          echo "Searching for liblzma*.dll across the filesystem ..."
-          sudo find / -type f \( -iname 'liblzma*.dll' -o -iname 'liblzma.dll' \) 2>/dev/null | tee /tmp/liblzma_found.txt
-
-          if [ -s /tmp/liblzma_found.txt ]; then
-            echo "Found $(wc -l < /tmp/liblzma_found.txt) candidate(s):"
-            cat /tmp/liblzma_found.txt
-          else
-            echo "No liblzma.dll found on this runner."
-          fi
       - name: Get Hashcat Version String
         if: ${{ steps.check_upstream.outputs.skip != 'true' }}
         id: get_version
@@ -191,7 +184,7 @@ jobs:
           ARCHIVE_NAME="hashcat_${{ steps.get_version.outputs.version }}.7z"
           7z a ../$ARCHIVE_NAME \
             hashcat.exe \
-            *.dll \
+            hashcat.dll \
             hashcat.hcstat2 \
             OpenCL/ \
             modules/*.dll \
@@ -229,10 +222,12 @@ jobs:
           echo "${{ steps.check_upstream.outputs.new_sha }}" > .cache/last_sha
           echo "Saved SHA ${{ steps.check_upstream.outputs.new_sha }} to .cache/last_sha"
 
-      # 保存缓存（使用新 SHA 作为 key）
+      # 只保存，不再用 run_id 作为 key。
+      # FORCE_BUILD=1 重复构建同一 SHA 时 key 已存在，continue-on-error 避免步骤失败
       - name: Save last upstream SHA to cache
         if: ${{ steps.check_upstream.outputs.skip == 'false' }}
-        uses: actions/cache@v5
+        uses: actions/cache/save@v5
+        continue-on-error: true
         with:
           path: .cache
           key: upstream-sha-${{ runner.os }}-${{ steps.check_upstream.outputs.new_sha }}
