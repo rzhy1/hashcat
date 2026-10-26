@@ -179,7 +179,7 @@ jobs:
           ARCHIVE_NAME="hashcat_${{ steps.get_version.outputs.version }}.7z"
           7z a ../$ARCHIVE_NAME \
             hashcat.exe \
-            hashcat.dll \
+            *.dll \
             hashcat.hcstat2 \
             OpenCL/ \
             modules/*.dll \
