@@ -193,7 +193,10 @@ jobs:
             tools/*.py \
             tools/*.pl \
             extra/ \
-            example*
+            example* \
+            pcfg/ \
+            bridges/ \
+            '-xr!*.so'
           echo "archive_path=./$ARCHIVE_NAME" >> $GITHUB_OUTPUT
 
       - name: Create Release
