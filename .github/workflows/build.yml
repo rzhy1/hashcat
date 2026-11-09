@@ -173,7 +173,7 @@ jobs:
         id: get_version
         run: |
           cd hashcat/
-          ASE_VERSION=$(git describe --tags --always)
+          BASE_VERSION=$(git describe --tags --always)
           VERSION_STRING="${BASE_VERSION}-$(date +%Y%m%d)"
           echo "version=${VERSION_STRING}" >> $GITHUB_OUTPUT
 
