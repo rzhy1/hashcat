@@ -211,10 +211,10 @@ jobs:
           artifacts: ${{ steps.package_release.outputs.archive_path }}
           name: hashcat ${{ steps.get_version.outputs.version }}
           tag: ${{ steps.get_version.outputs.version }}
+          commit: ${{ github.sha }} 
           allowUpdates: true
           token: ${{ secrets.GITHUB_TOKEN }}
 
-      # 构建成功后保存新的 SHA 到缓存文件
       - name: Save SHA to cache file
         if: ${{ steps.check_upstream.outputs.skip == 'false' }}
         run: |
@@ -222,8 +222,6 @@ jobs:
           echo "${{ steps.check_upstream.outputs.new_sha }}" > .cache/last_sha
           echo "Saved SHA ${{ steps.check_upstream.outputs.new_sha }} to .cache/last_sha"
 
-      # 只保存，不再用 run_id 作为 key。
-      # FORCE_BUILD=1 重复构建同一 SHA 时 key 已存在，continue-on-error 避免步骤失败
       - name: Save last upstream SHA to cache
         if: ${{ steps.check_upstream.outputs.skip == 'false' }}
         uses: actions/cache/save@v5
